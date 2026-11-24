@@ -1,31 +1,30 @@
-# JudgeMyJPEG for Lightroom Classic
+# JudgeMyJPEG for Adobe Lightroom Classic (v1.1.1)
 
-An Adobe Lightroom Classic plugin that sends a rendered JPEG to JudgeMyJPEG for photo feedback.
+An official, open-source Adobe Lightroom Classic plugin that renders a temporary JPEG preview locally and sends it to [JudgeMyJPEG](https://www.judgemyjpeg.com) for AI photo feedback.
 
 ## Features
 
-- Analyze the selected photo and view its score, summary, and suggestions.
-- Pair Lightroom with a JudgeMyJPEG account through the browser.
-- Render a temporary JPEG from the selected photo before analysis.
-- Choose **Coach** for constructive guidance or **Roast** for a humorous critique.
-- Select French, English, Spanish, German, Italian, or Portuguese for the analysis.
-- Save results to the connected JudgeMyJPEG account and use its analysis quota.
-
-The comparison command is a legacy feature. It still relies on the older MCP token flow and public image URLs; the regular photo analysis does not.
+- Analyze the selected photo directly inside your Lightroom catalog — score out of 100, summary, and concrete technical suggestions.
+- Pair Lightroom Classic with your JudgeMyJPEG account in one click through your browser.
+- Render a temporary JPEG preview automatically without modifying your original RAW files or catalog.
+- Choose **Coach** (constructive technical guidance) or **Roast** (unfiltered humor).
+- Receive critiques in **7 languages**: English, French, Spanish, German, Italian, Portuguese, and Simplified Chinese (`zh`).
+- Store scores directly in Lightroom plugin metadata (`JudgeMyJPEG Score`, `JudgeMyJPEG Mode`, etc.) and sync full results to your JudgeMyJPEG account.
+- Free and open-source plugin (works with any JudgeMyJPEG account, which includes 3 free analyses/month; optional Pro plans for unlimited usage).
 
 ## Install
 
-1. Download or clone this repository.
-2. In Lightroom Classic, open **File → Plug-in Manager**.
-3. Select **Add** and choose `JudgeMyJPEG.lrdevplugin`.
-4. Open the plugin settings and connect your JudgeMyJPEG account in the browser.
-5. Select one photo, then choose **Library → Plug-in Extras → Analyze Selected Photo**.
+1. Download and extract `JudgeMyJPEG-Lightroom-Plugin-v1.1.1.zip` (or clone this repository).
+2. In Adobe Lightroom Classic, open **File → Plug-in Manager**.
+3. Click **Add** and select `JudgeMyJPEG.lrdevplugin`.
+4. Under **JudgeMyJPEG Account**, click **Connect in Browser** to pair your account, then select your preferred **Mode** and **Language**.
+5. Select one photo in Library and choose **Library → Plug-in Extras → Analyze Selected Photo**.
 
-The plugin metadata declares Lightroom Classic 6.0 as its minimum version. The included SDK metadata and Adobe's compatibility requirements may vary by Lightroom release.
+Compatible with Adobe Lightroom Classic 6.0+.
 
 ## Development
 
-The plugin is written in Lua and uses Lightroom Classic's SDK. It has no separate build step. Report bugs with the Lightroom version, plugin version, and steps to reproduce.
+The plugin is written in Lua and uses Lightroom Classic's SDK (no build step required).
 
 ## License and names
 
@@ -33,4 +32,4 @@ The plugin source is licensed under the MIT License; see [LICENSE](LICENSE). The
 
 JudgeMyJPEG is a product name of CodeCraft Plus. The MIT license does not grant rights to the JudgeMyJPEG or Adobe trademarks, or to the hosted JudgeMyJPEG service. This project is not affiliated with Adobe.
 
-Support: [contact.judgemyjpeg@gmail.com](mailto:contact.judgemyjpeg@gmail.com)
+Support: [contact.judgemyjpeg@gmail.com](mailto:contact.judgemyjpeg@gmail.com) · [https://www.judgemyjpeg.com/plugin-lightroom](https://www.judgemyjpeg.com/plugin-lightroom)

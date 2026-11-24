@@ -1,6 +1,6 @@
 --[[----------------------------------------------------------------------------
-JudgeMyJPEG - API client for Lightroom Classic
-Handles browser pairing, JPEG rendering and authenticated analysis requests.
+JudgeMyJPEG - API client for Lightroom Classic (v1.1.1)
+Handles browser pairing, temporary JPEG rendering, and authenticated analyses.
 ------------------------------------------------------------------------------]]
 
 local LrBase64 = import 'LrBase64'
@@ -53,12 +53,14 @@ function JudgeMyJPEGAPI.getSettings()
 	local prefs = getPreferences()
 	return {
 		tone = prefs.analysisMode or 'smart',
-		language = prefs.language or 'fr',
+		language = prefs.language or 'en',
 	}
 end
 
 function JudgeMyJPEGAPI.clearToken()
-	getPreferences().accessToken = nil
+	local prefs = getPreferences()
+	prefs.accessToken = nil
+	prefs.mcpToken = nil
 end
 
 local function generatePairingCode()
@@ -81,7 +83,7 @@ function JudgeMyJPEGAPI.startPairing()
 
 	if getStatusCode(headers) ~= 201 then
 		logger:error('Unable to start Lightroom pairing: ' .. tostring(response))
-		return nil, 'Impossible de démarrer la connexion JudgeMyJPEG.'
+		return nil, 'Unable to start JudgeMyJPEG pairing. Please check your internet connection.'
 	end
 
 	return code, nil
@@ -102,19 +104,19 @@ function JudgeMyJPEGAPI.waitForPairing(code, progressScope)
 				return payload.accessToken, nil
 			end
 		elseif status == 404 then
-			return nil, 'La demande de connexion a expiré.'
+			return nil, 'The pairing request expired. Please try again.'
 		elseif status == 503 then
-			return nil, 'Le service de connexion est temporairement indisponible.'
+			return nil, 'The pairing service is temporarily unavailable. Please try again shortly.'
 		end
 
 		if progressScope then
 			progressScope:setPortionComplete(attempt / 60, 1)
-			progressScope:setCaption('En attente de la connexion dans le navigateur...')
+			progressScope:setCaption('Waiting for browser authorization...')
 		end
 		LrTasks.sleep(2)
 	end
 
-	return nil, 'La connexion a pris trop de temps. Relancez l’opération.'
+	return nil, 'Pairing timed out. Please try connecting again.'
 end
 
 function JudgeMyJPEGAPI.connect(progressScope)
@@ -155,7 +157,7 @@ function JudgeMyJPEGAPI.exportPhotoTemp(photo)
 	for _, rendition in exportSession:renditions() do
 		local success, pathOrMessage = rendition:waitForRender()
 		if not success then
-			return nil, 'Impossible de convertir la photo en JPEG: ' .. tostring(pathOrMessage)
+			return nil, 'Unable to render temporary JPEG: ' .. tostring(pathOrMessage)
 		end
 		if pathOrMessage and LrFileUtils.exists(pathOrMessage) then
 			return pathOrMessage, nil
@@ -166,23 +168,41 @@ function JudgeMyJPEGAPI.exportPhotoTemp(photo)
 		return exportPath, nil
 	end
 
-	return nil, 'Lightroom n’a pas produit de fichier JPEG.'
+	return nil, 'Lightroom did not produce a temporary JPEG file.'
+end
+
+local function formatApiError(status, response)
+	if status == 401 then
+		return 'Your JudgeMyJPEG session expired or was revoked. Please reconnect in File > Plug-in Manager.'
+	elseif status == 403 then
+		return 'Monthly analysis quota reached (3 free analyses/month). Upgrade on judgemyjpeg.com/pricing for unlimited analyses.'
+	elseif status == 429 then
+		return 'Daily fair-use or rate limit reached (150 analyses/24h). Please try again later.'
+	elseif status == 400 and response then
+		local ok, payload = pcall(json.decode, response)
+		if ok and payload and payload.error == 'ERR_INELIGIBLE_IMAGE' then
+			return 'This image does not appear to be an eligible photograph (e.g. screenshot or graphic).'
+		elseif ok and payload and payload.error == 'ERR_CONTENT_BLOCKED' then
+			return 'This image was blocked by our content safety policy.'
+		end
+	end
+	return 'API error (' .. tostring(status) .. '). Please try again.'
 end
 
 function JudgeMyJPEGAPI.analyzePhoto(photo, progressScope)
 	local token = JudgeMyJPEGAPI.getToken()
 	if not token or token == '' then
-		return nil, 'Connectez d’abord votre compte JudgeMyJPEG dans les paramètres du plugin.'
+		return nil, 'Please connect your JudgeMyJPEG account first in File > Plug-in Manager.'
 	end
 
 	local renderedPath, exportError = JudgeMyJPEGAPI.exportPhotoTemp(photo)
 	if not renderedPath then return nil, exportError end
 
-	if progressScope then progressScope:setCaption('Préparation de l’image...') end
+	if progressScope then progressScope:setCaption('Preparing temporary JPEG...') end
 	local fileContent = LrFileUtils.readFile(renderedPath)
 	if not fileContent then
 		LrFileUtils.delete(renderedPath)
-		return nil, 'Impossible de lire le JPEG exporté.'
+		return nil, 'Unable to read the temporary JPEG file.'
 	end
 
 	local settings = JudgeMyJPEGAPI.getSettings()
@@ -193,14 +213,14 @@ function JudgeMyJPEGAPI.analyzePhoto(photo, progressScope)
 		language = settings.language,
 	})
 
-	if progressScope then progressScope:setCaption('Analyse JudgeMyJPEG en cours...') end
+	if progressScope then progressScope:setCaption('Analyzing photo with JudgeMyJPEG...') end
 	local response, headers = LrHttp.post(
 		JudgeMyJPEGAPI.ANALYZE_URL,
 		body,
 		{
 			{ field = 'Authorization', value = 'Bearer ' .. token },
 			{ field = 'Content-Type', value = 'application/json' },
-			{ field = 'User-Agent', value = 'JudgeMyJPEG-Lightroom-Plugin/1.1' },
+			{ field = 'User-Agent', value = 'JudgeMyJPEG-Lightroom-Plugin/1.1.1' },
 		},
 		'POST',
 		60
@@ -210,44 +230,15 @@ function JudgeMyJPEGAPI.analyzePhoto(photo, progressScope)
 
 	local status = getStatusCode(headers)
 	if status ~= 200 then
-		local message = status == 403 and 'Votre quota d’analyses est atteint.' or 'Erreur API (' .. tostring(status) .. ').'
-		logger:error('Lightroom analysis failed: ' .. tostring(response))
-		return nil, message
+		logger:error('Lightroom analysis failed (' .. tostring(status) .. '): ' .. tostring(response))
+		return nil, formatApiError(status, response)
 	end
 
 	local ok, result = pcall(json.decode, response)
 	if not ok or not result.analysis then
-		return nil, 'Réponse invalide du serveur JudgeMyJPEG.'
+		return nil, 'Invalid response received from JudgeMyJPEG.'
 	end
 
-	return result, nil
-end
-
--- Kept for the legacy Battle feature. New installations use the browser token
--- for individual analysis; compare remains on the previous MCP endpoint.
-function JudgeMyJPEGAPI.comparePhotos(photoUrlA, photoUrlB)
-	local token = getPreferences().mcpToken
-	if not token or token == '' then
-		return nil, 'La comparaison A/B utilise encore l’ancien Token MCP.'
-	end
-
-	local response, headers = LrHttp.post(
-		'https://mcp-server-production-57ab.up.railway.app/mcp/compare',
-		json.encode({ photo_a = photoUrlA, photo_b = photoUrlB }),
-		{
-			{ field = 'Content-Type', value = 'application/json' },
-			{ field = 'x-mcp-token', value = token },
-		},
-		'POST',
-		30
-	)
-
-	if getStatusCode(headers) ~= 200 then
-		return nil, 'Erreur API de comparaison.'
-	end
-
-	local ok, result = pcall(json.decode, response)
-	if not ok then return nil, 'Réponse invalide de comparaison.' end
 	return result, nil
 end
 
