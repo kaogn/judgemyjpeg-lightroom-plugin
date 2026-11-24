@@ -1,8 +1,10 @@
 --[[----------------------------------------------------------------------------
 JudgeMyJPEG - Plugin Info Provider
+Persists Coach/Roast mode and 7-language preference in LrPrefs.prefsForPlugin().
 ------------------------------------------------------------------------------]]
 
 local LrDialogs = import 'LrDialogs'
+local LrPrefs = import 'LrPrefs'
 local LrProgressScope = import 'LrProgressScope'
 local LrTasks = import 'LrTasks'
 local LrView = import 'LrView'
@@ -10,19 +12,45 @@ local bind = LrView.bind
 
 local JudgeMyJPEGAPI = require 'JudgeMyJPEGAPI'
 
-return {
-	sectionsForTopOfDialog = function(f, propertyTable)
-		propertyTable.connectionStatus = JudgeMyJPEGAPI.isConnected()
-			and 'Compte JudgeMyJPEG connecté'
-			or 'Compte JudgeMyJPEG non connecté'
+local function syncPreferencesToPrefs(propertyTable)
+	local prefs = LrPrefs.prefsForPlugin()
+	if propertyTable.analysisMode == 'smart' or propertyTable.analysisMode == 'roast' then
+		prefs.analysisMode = propertyTable.analysisMode
+	end
+	if propertyTable.language and propertyTable.language ~= '' then
+		prefs.language = propertyTable.language
+	end
+end
 
+return {
+	startDialog = function(propertyTable)
+		local prefs = LrPrefs.prefsForPlugin()
+		propertyTable.analysisMode = prefs.analysisMode or 'smart'
+		propertyTable.language = prefs.language or 'en'
+		propertyTable.connectionStatus = JudgeMyJPEGAPI.isConnected()
+			and 'Connected to JudgeMyJPEG'
+			or 'Not connected'
+
+		propertyTable:addObserver('analysisMode', function(properties)
+			syncPreferencesToPrefs(properties)
+		end)
+		propertyTable:addObserver('language', function(properties)
+			syncPreferencesToPrefs(properties)
+		end)
+	end,
+
+	endDialog = function(propertyTable)
+		syncPreferencesToPrefs(propertyTable)
+	end,
+
+	sectionsForTopOfDialog = function(f, propertyTable)
 		return {
 			{
-				title = 'JudgeMyJPEG',
+				title = 'JudgeMyJPEG Account',
 				f:row {
 					f:static_text {
-						title = 'Analysez la photo sélectionnée avec JudgeMyJPEG, sans exporter manuellement de fichier.',
-						width_in_chars = 58,
+						title = 'Analyze your selected photo directly inside Lightroom Classic — no manual export or image URL required. Free accounts include 3 analyses/month.',
+						width_in_chars = 60,
 						height_in_lines = 2,
 						wrap = true,
 					},
@@ -32,74 +60,58 @@ return {
 				},
 				f:row {
 					f:push_button {
-						title = 'Se connecter dans le navigateur',
+						title = 'Connect in Browser',
 						action = function()
 							LrTasks.startAsyncTask(function()
-								local progressScope = LrProgressScope({ title = 'Connexion JudgeMyJPEG' })
+								local progressScope = LrProgressScope({ title = 'JudgeMyJPEG Pairing' })
 								local token, errorMessage = JudgeMyJPEGAPI.connect(progressScope)
 								progressScope:done()
 
 								if token then
-									propertyTable.connectionStatus = 'Compte JudgeMyJPEG connecté'
-									LrDialogs.message('JudgeMyJPEG', 'Connexion réussie. Vous pouvez analyser une photo.', 'info')
+									propertyTable.connectionStatus = 'Connected to JudgeMyJPEG'
+									LrDialogs.message('JudgeMyJPEG', 'Connected successfully. You can now analyze selected photos from Library > Plug-in Extras.', 'info')
 								else
-									LrDialogs.message('JudgeMyJPEG', errorMessage or 'Connexion annulée.', 'critical')
+									LrDialogs.message('JudgeMyJPEG', errorMessage or 'Connection canceled.', 'critical')
 								end
 							end)
 						end,
 					},
 					f:push_button {
-						title = 'Déconnecter',
+						title = 'Disconnect',
 						action = function()
 							JudgeMyJPEGAPI.clearToken()
-							propertyTable.connectionStatus = 'Compte JudgeMyJPEG non connecté'
+							propertyTable.connectionStatus = 'Not connected'
 						end,
 					},
 				},
 			},
 			{
-				title = 'Préférences d’analyse',
+				title = 'Analysis Preferences',
 				f:row {
-					f:static_text { title = 'Ton :', width = LrView.share 'label_width' },
+					f:static_text { title = 'Mode:', width = LrView.share 'label_width' },
 					f:popup_menu {
 						value = bind 'analysisMode',
 						items = {
-							{ title = 'Coach', value = 'smart' },
-							{ title = 'Roast', value = 'roast' },
+							{ title = 'Coach (constructive)', value = 'smart' },
+							{ title = 'Roast (unfiltered)', value = 'roast' },
 						},
-						width_in_chars = 20,
+						width_in_chars = 24,
 					},
 				},
 				f:row {
-					f:static_text { title = 'Langue :', width = LrView.share 'label_width' },
+					f:static_text { title = 'Language:', width = LrView.share 'label_width' },
 					f:popup_menu {
 						value = bind 'language',
 						items = {
-							{ title = 'Français', value = 'fr' },
 							{ title = 'English', value = 'en' },
+							{ title = 'Français', value = 'fr' },
 							{ title = 'Español', value = 'es' },
 							{ title = 'Deutsch', value = 'de' },
 							{ title = 'Italiano', value = 'it' },
 							{ title = 'Português', value = 'pt' },
+							{ title = '中文 (简体)', value = 'zh' },
 						},
-						width_in_chars = 20,
-					},
-				},
-			},
-			{
-				title = 'Compatibilité ancienne version',
-				f:row {
-					f:static_text {
-						title = 'Les anciens Tokens MCP restent disponibles uniquement pour la comparaison A/B.',
-						width_in_chars = 58,
-						height_in_lines = 2,
-						wrap = true,
-					},
-				},
-				f:row {
-					f:password_field {
-						value = bind 'mcpToken',
-						width_in_chars = 40,
+						width_in_chars = 24,
 					},
 				},
 			},

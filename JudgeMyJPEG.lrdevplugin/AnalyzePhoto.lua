@@ -1,5 +1,5 @@
 --[[----------------------------------------------------------------------------
-JudgeMyJPEG - Analyse la photo sélectionnée dans Lightroom Classic
+JudgeMyJPEG - Analyze Selected Photo in Adobe Lightroom Classic (v1.1.1)
 ------------------------------------------------------------------------------]]
 
 local LrApplication = import 'LrApplication'
@@ -22,6 +22,7 @@ local function showAnalysisResults(analysis, photo)
 		local properties = LrBinding.makePropertyTable(context)
 		local partialScores = analysis.partialScores or {}
 		local suggestions = analysis.suggestions or {}
+		local suggestionsText = #suggestions > 0 and ('• ' .. table.concat(suggestions, '\n• ')) or '—'
 		local score = tonumber(analysis.score) or 0
 		local scoreColor = score >= 85 and 'green' or score >= 70 and 'orange' or 'red'
 
@@ -29,13 +30,13 @@ local function showAnalysisResults(analysis, photo)
 			bind_to_object = properties,
 			spacing = f:control_spacing(),
 			f:static_text {
-				title = 'Résultats de l’analyse JudgeMyJPEG',
+				title = 'JudgeMyJPEG Analysis Results',
 				text_color = LrColor(scoreColor),
 				font = '<system/bold>',
 			},
 			f:separator {},
 			f:row {
-				f:static_text { title = 'Score global:', width = LrView.share('label_width') },
+				f:static_text { title = 'Overall Score:', width = LrView.share('label_width') },
 				f:static_text { title = score .. '/100', font = '<system/bold>' },
 			},
 			f:row {
@@ -43,19 +44,19 @@ local function showAnalysisResults(analysis, photo)
 				f:static_text { title = tostring(partialScores.composition or '—') .. '/15' },
 			},
 			f:row {
-				f:static_text { title = 'Éclairage:', width = LrView.share('label_width') },
+				f:static_text { title = 'Lighting:', width = LrView.share('label_width') },
 				f:static_text { title = tostring(partialScores.lighting or partialScores.light or '—') .. '/15' },
 			},
 			f:row {
-				f:static_text { title = 'Netteté:', width = LrView.share('label_width') },
+				f:static_text { title = 'Sharpness:', width = LrView.share('label_width') },
 				f:static_text { title = tostring(partialScores.focus or '—') .. '/15' },
 			},
 			f:row {
-				f:static_text { title = 'Exposition:', width = LrView.share('label_width') },
+				f:static_text { title = 'Exposure:', width = LrView.share('label_width') },
 				f:static_text { title = tostring(partialScores.exposure or '—') .. '/15' },
 			},
 			f:separator {},
-			f:static_text { title = 'Résumé:', font = '<system/bold>' },
+			f:static_text { title = 'Summary:', font = '<system/bold>' },
 			f:scrolled_view {
 				horizontal_scroller = false,
 				width = 420,
@@ -67,7 +68,7 @@ local function showAnalysisResults(analysis, photo)
 				horizontal_scroller = false,
 				width = 420,
 				height = 150,
-				f:static_text { title = table.concat(suggestions, '\n• '), width = 400 },
+				f:static_text { title = suggestionsText, width = 400 },
 			},
 		}
 
@@ -75,7 +76,7 @@ local function showAnalysisResults(analysis, photo)
 			title = 'JudgeMyJPEG - ' .. photo:getFormattedMetadata('fileName'),
 			contents = contents,
 			cancelVerb = '< exclude "Cancel" >',
-			actionVerb = 'Fermer',
+			actionVerb = 'Close',
 		}
 	end)
 end
@@ -87,8 +88,8 @@ LrTasks.startAsyncTask(function()
 
 		if #selectedPhotos ~= 1 then
 			LrDialogs.message(
-				'Sélection incorrecte',
-				'Veuillez sélectionner exactement une photo dans Lightroom Classic.',
+				'Select One Photo',
+				'Please select exactly one photo in Adobe Lightroom Classic.',
 				'info'
 			)
 			return
@@ -96,7 +97,7 @@ LrTasks.startAsyncTask(function()
 
 		local photo = selectedPhotos[1]
 		local progressScope = LrProgressScope({
-			title = 'JudgeMyJPEG - Analyse en cours',
+			title = 'JudgeMyJPEG - Analyzing Photo',
 			functionContext = context,
 		})
 
@@ -110,15 +111,20 @@ LrTasks.startAsyncTask(function()
 
 		local analysis = result.analysis
 		local partialScores = analysis.partialScores or {}
-		catalog:withWriteAccessDo('JudgeMyJPEG Analysis', function()
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeScore', tostring(analysis.score or ''))
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeAnalysisDate', os.date('%Y-%m-%d %H:%M:%S'))
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeTone', JudgeMyJPEGAPI.getSettings().tone)
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeComposition', tostring(partialScores.composition or ''))
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeLighting', tostring(partialScores.lighting or partialScores.light or ''))
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeFocus', tostring(partialScores.focus or ''))
-			photo:setPropertyForPlugin(_PLUGIN, 'judgeExposure', tostring(partialScores.exposure or ''))
+		local writeOk, writeErr = pcall(function()
+			catalog:withWriteAccessDo('JudgeMyJPEG Analysis', function()
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeScore', tostring(analysis.score or ''))
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeAnalysisDate', os.date('%Y-%m-%d %H:%M:%S'))
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeTone', JudgeMyJPEGAPI.getSettings().tone)
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeComposition', tostring(partialScores.composition or ''))
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeLighting', tostring(partialScores.lighting or partialScores.light or ''))
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeFocus', tostring(partialScores.focus or ''))
+				photo:setPropertyForPlugin(_PLUGIN, 'judgeExposure', tostring(partialScores.exposure or ''))
+			end)
 		end)
+		if not writeOk then
+			logger:warn('Unable to store Lightroom plugin metadata: ' .. tostring(writeErr))
+		end
 
 		showAnalysisResults(analysis, photo)
 		logger:info('Lightroom analysis completed - score: ' .. tostring(analysis.score))
